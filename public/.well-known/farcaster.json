@@ -1,0 +1,29 @@
+{
+  "accountAssociation": {
+    "_note": "TODO: Replace header/payload/signature by signing at https://build.base.org",
+    "header": "REPLACE_WITH_SIGNED_HEADER",
+    "payload": "REPLACE_WITH_SIGNED_PAYLOAD",
+    "signature": "REPLACE_WITH_SIGNED_SIGNATURE"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Veklom Agent Duel",
+    "homeUrl": "https://duel.veklom.com",
+    "iconUrl": "https://duel.veklom.com/icon.png",
+    "splashImageUrl": "https://duel.veklom.com/splash.png",
+    "splashBackgroundColor": "#050609",
+    "primaryCategory": "games",
+    "tags": ["agents", "game", "arcade", "base", "social"],
+    "subtitle": "Back an agent in time",
+    "description": "A fast social route-runner. Back an agent, watch the curve climb, and time your exit before the round flips.",
+    "tagline": "Pick a side. Time the exit.",
+    "heroImageUrl": "https://duel.veklom.com/hero.png",
+    "screenshotUrls": [
+      "https://duel.veklom.com/screenshot-1.png",
+      "https://duel.veklom.com/screenshot-2.png"
+    ],
+    "ogTitle": "Veklom Agent Duel",
+    "ogDescription": "Back an agent, watch the route, and time your exit.",
+    "ogImageUrl": "https://duel.veklom.com/og.png"
+  }
+}
