@@ -1,25 +1,22 @@
 /**
  * x402 Payment-Gated Session Endpoint
- *
- * Flow:
- * 1. Client hits GET /api/session
- * 2. If no valid PAYMENT-SIGNATURE header → respond 402 with payment requirements
- * 3. Client signs payment using Base wallet + x402-fetch
- * 4. Client retries with PAYMENT-SIGNATURE header
- * 5. This route verifies via x402 facilitator
- * 6. On success → issue short-lived session token + return game session
- *
- * See AGENT_NOTES.md for full flow diagram.
- * Docs: https://docs.cdp.coinbase.com/x402
+ * Payments route to Veklom.com production wallet: 0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d
+ * Identity verified against Veklom ID wallet: 0x3a74772e925b54F7dAD7FD95c9Ba30825033f970
+ * Base App ID: 6a387f28f557b72339a86f7d
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 
+// Veklom.com production payment wallet (x402 wager payments flow here)
+const PAYMENT_WALLET = '0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d'
+// USDC on Base Mainnet
+const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+
 const PAYMENT_AMOUNT = process.env.X402_PAYMENT_AMOUNT_USDC || '0.10'
 const FACILITATOR_URL = process.env.X402_FACILITATOR_URL || 'https://x402.org/facilitator'
-const RESOURCE_URL = process.env.X402_RESOURCE_URL || 'https://duel.veklom.com/api/session'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://veklom-agent-duel.vercel.app'
+const RESOURCE_URL = `${APP_URL}/api/session`
 
-// Payment requirements object (sent on 402)
 function buildPaymentRequired() {
   return {
     x402Version: 1,
@@ -27,13 +24,13 @@ function buildPaymentRequired() {
       {
         scheme: 'exact',
         network: 'base-mainnet',
-        maxAmountRequired: (parseFloat(PAYMENT_AMOUNT) * 1_000_000).toString(), // USDC 6 decimals
+        maxAmountRequired: (parseFloat(PAYMENT_AMOUNT) * 1_000_000).toString(),
         resource: RESOURCE_URL,
         description: 'Veklom Agent Duel — Game Session Access',
         mimeType: 'application/json',
-        payTo: process.env.VEKLOM_WALLET_ADDRESS || '0x0000000000000000000000000000000000000000',
+        payTo: PAYMENT_WALLET,
         maxTimeoutSeconds: 300,
-        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base mainnet
+        asset: USDC_BASE,
         extra: {
           name: 'Veklom Agent Duel',
           version: '1'
@@ -47,7 +44,6 @@ function buildPaymentRequired() {
 export async function GET(req: NextRequest) {
   const paymentHeader = req.headers.get('PAYMENT-SIGNATURE') || req.headers.get('X-PAYMENT')
 
-  // Step 2: No payment signature — return 402
   if (!paymentHeader) {
     const paymentRequired = buildPaymentRequired()
     return new NextResponse(
@@ -62,7 +58,6 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // Step 5: Verify payment via x402 facilitator
   try {
     const verifyRes = await fetch(`${FACILITATOR_URL}/verify`, {
       method: 'POST',
@@ -79,16 +74,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Payment verification failed', detail: err }, { status: 402 })
     }
 
-    // Settle payment via facilitator
     await fetch(`${FACILITATOR_URL}/settle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ paymentHeader, resource: RESOURCE_URL })
     })
 
-    // Step 6: Issue session token (simple signed timestamp — replace with JWT in production)
     const sessionToken = Buffer.from(
-      JSON.stringify({ ts: Date.now(), exp: Date.now() + 30 * 60 * 1000 })
+      JSON.stringify({ ts: Date.now(), exp: Date.now() + 30 * 60 * 1000, wallet: PAYMENT_WALLET })
     ).toString('base64')
 
     return NextResponse.json(
