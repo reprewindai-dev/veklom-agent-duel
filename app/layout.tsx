@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import '@coinbase/onchainkit/styles.css'
+import { Providers } from './providers'
 
 export const metadata: Metadata = {
   title: 'Veklom Agent Duel',
@@ -20,9 +22,7 @@ export const metadata: Metadata = {
     images: ['/og.png']
   },
   other: {
-    // Base App domain verification
     'base:app_id': '6a387f28f557b72339a86f7d',
-    // Farcaster Mini App frame
     'fc:frame': 'vNext',
     'fc:frame:image': 'https://veklom-agent-duel.vercel.app/og.png',
     'fc:frame:button:1': 'Back Vector North',
@@ -41,7 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }
