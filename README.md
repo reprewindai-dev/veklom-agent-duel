@@ -2,33 +2,43 @@
 
 > Back an agent. Watch the route. Time your exit.
 
-A Base Mini App + standalone web game built on [Base](https://base.org), deployed via Vercel, and accessible at `veklom.com`.
+Agent Duel is a standalone Veklom-built competitive product for testing verifiable machine strategy, live telemetry, wallet-native access, and replayable outcomes.
+
+It is intentionally **not part of the Capability OS workspace UI**. It can consume Veklom identity, x402, and evidence infrastructure while remaining independently deployable and sellable.
+
+## Product loop
+
+1. Connect a supported wallet.
+2. Start or join a duel session.
+3. Choose an agent/strategy side.
+4. Watch the route and live telemetry evolve.
+5. Make a timing/strategy decision.
+6. Receive a transparent result and replay/evidence trail.
+7. Build challenge history, streaks, and reputation over time.
+
+The product should retain users through skill, social competition, progression, replays, and trustworthy outcomes — not through fabricated balances or misleading live-state claims.
 
 ## Stack
 
-- **Frontend**: Next.js 14 App Router
-- **Chain**: Base (L2 by Coinbase, chain ID 8453)
-- **Payments**: [x402](https://docs.cdp.coinbase.com/x402) — HTTP-native payment protocol
-- **Wallet**: [OnchainKit](https://onchainkit.xyz) by Coinbase
-- **Deployment**: Vercel → `duel.veklom.com`
-- **Discovery**: Base Mini App manifest at `/.well-known/farcaster.json`
+- Next.js App Router
+- Base
+- OnchainKit / wallet connection
+- x402 for payment-gated access where enabled
+- Vercel deployment
+- Base Mini App manifest support
 
-## Quick Start
+## Production rules
+
+- Seeded/faucet balances and synthetic telemetry are development fixtures only.
+- No simulated escrow, winnings, block height, or settlement may be presented as verified production data.
+- Real-money chance-based wagering is not enabled by this repository's product contract; any such deployment requires a separate legal and production review.
+- Payment gating may be used for access/session purchase independently of wagering.
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and fill in your keys.
-
-## Deployment
-
-1. Push to GitHub (already done)
-2. Import into Vercel → auto-deploys on push
-3. Add custom domain `duel.veklom.com` in Vercel settings
-4. Set environment variables (see AGENT_NOTES.md)
-5. Sign Base manifest at https://build.base.org
-6. Publish to Base Mini App store
-
-See [AGENT_NOTES.md](./AGENT_NOTES.md) for the full agent handoff and TODO list.
+Deployment credentials, service tokens, and signing material belong in the deployment environment and must never be committed to git.
