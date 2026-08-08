@@ -1,106 +1,128 @@
-/**
- * x402 Payment-Gated Session Endpoint
- * Payments route to Veklom.com production wallet: 0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d
- * Identity verified against Veklom ID wallet: 0x3a74772e925b54F7dAD7FD95c9Ba30825033f970
- * Base App ID: 6a387f28f557b72339a86f7d
- */
-
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 
-// Veklom.com production payment wallet (x402 wager payments flow here)
-const PAYMENT_WALLET = '0xCC34553b4e6332ffb9C1b61E22436ACA53113D1d'
-// USDC on Base Mainnet
 const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
-
 const PAYMENT_AMOUNT = process.env.X402_PAYMENT_AMOUNT_USDC || '0.10'
-const FACILITATOR_URL = process.env.X402_FACILITATOR_URL || 'https://x402.org/facilitator'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://veklom-agent-duel.vercel.app'
+const FACILITATOR_URL = (process.env.X402_FACILITATOR_URL || 'https://x402.org/facilitator').replace(/\/$/, '')
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://duel.veklom.com').replace(/\/$/, '')
 const RESOURCE_URL = `${APP_URL}/api/session`
 
+function paymentWallet(): string {
+  return (process.env.X402_PAYMENT_ADDRESS || '').trim()
+}
+
+function sessionSecret(): string {
+  return (process.env.SESSION_SECRET || '').trim()
+}
+
 function buildPaymentRequired() {
+  const payTo = paymentWallet()
+  if (!payTo) throw new Error('X402_PAYMENT_ADDRESS is not configured')
+
   return {
-    x402Version: 1,
-    accepts: [
-      {
-        scheme: 'exact',
-        network: 'base-mainnet',
-        maxAmountRequired: (parseFloat(PAYMENT_AMOUNT) * 1_000_000).toString(),
-        resource: RESOURCE_URL,
-        description: 'Veklom Agent Duel — Game Session Access',
-        mimeType: 'application/json',
-        payTo: PAYMENT_WALLET,
-        maxTimeoutSeconds: 300,
-        asset: USDC_BASE,
-        extra: {
-          name: 'Veklom Agent Duel',
-          version: '1'
-        }
-      }
-    ],
-    error: 'Payment required to access a game session'
+    x402Version: 2,
+    resource: {
+      url: RESOURCE_URL,
+      description: 'Veklom Agent Duel — session access',
+      mimeType: 'application/json',
+    },
+    accepts: [{
+      scheme: 'exact',
+      network: 'eip155:8453',
+      amount: Math.round(Number(PAYMENT_AMOUNT) * 1_000_000).toString(),
+      asset: USDC_BASE,
+      payTo,
+      maxTimeoutSeconds: 300,
+      extra: { name: 'USD Coin', version: '2' },
+    }],
+    error: 'Payment required to create an Agent Duel session',
   }
 }
 
-export async function GET(req: NextRequest) {
-  const paymentHeader = req.headers.get('PAYMENT-SIGNATURE') || req.headers.get('X-PAYMENT')
+function signSession(payload: Record<string, unknown>): string {
+  const secret = sessionSecret()
+  if (!secret) throw new Error('SESSION_SECRET is not configured')
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  const signature = createHmac('sha256', secret).update(encoded).digest('base64url')
+  return `${encoded}.${signature}`
+}
 
+async function readJson(response: Response) {
+  const text = await response.text()
+  if (!text) return null
+  try { return JSON.parse(text) } catch { return { raw: text } }
+}
+
+export async function GET(req: NextRequest) {
+  if (!paymentWallet() || !sessionSecret()) {
+    return NextResponse.json({ error: 'Agent Duel payment/session configuration is incomplete' }, { status: 503 })
+  }
+
+  const paymentHeader = req.headers.get('X-PAYMENT') || req.headers.get('PAYMENT-SIGNATURE')
   if (!paymentHeader) {
-    const paymentRequired = buildPaymentRequired()
-    return new NextResponse(
-      JSON.stringify(paymentRequired),
-      {
+    try {
+      const paymentRequired = buildPaymentRequired()
+      return NextResponse.json(paymentRequired, {
         status: 402,
-        headers: {
-          'Content-Type': 'application/json',
-          'PAYMENT-REQUIRED': JSON.stringify(paymentRequired)
-        }
-      }
-    )
+        headers: { 'PAYMENT-REQUIRED': Buffer.from(JSON.stringify(paymentRequired)).toString('base64') },
+      })
+    } catch (error: any) {
+      return NextResponse.json({ error: error.message }, { status: 503 })
+    }
   }
 
   try {
+    const requirements = buildPaymentRequired()
     const verifyRes = await fetch(`${FACILITATOR_URL}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        x402Version: 1,
-        paymentHeader,
-        resource: RESOURCE_URL
-      })
+      body: JSON.stringify({ x402Version: 2, paymentPayload: paymentHeader, paymentRequirements: requirements.accepts[0] }),
+      cache: 'no-store',
     })
-
-    if (!verifyRes.ok) {
-      const err = await verifyRes.json().catch(() => ({}))
-      return NextResponse.json({ error: 'Payment verification failed', detail: err }, { status: 402 })
+    const verifyBody = await readJson(verifyRes)
+    if (!verifyRes.ok || verifyBody?.isValid === false || verifyBody?.valid === false) {
+      return NextResponse.json({ error: 'Payment verification failed', detail: verifyBody }, { status: 402 })
     }
 
-    await fetch(`${FACILITATOR_URL}/settle`, {
+    const settleRes = await fetch(`${FACILITATOR_URL}/settle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentHeader, resource: RESOURCE_URL })
+      body: JSON.stringify({ x402Version: 2, paymentPayload: paymentHeader, paymentRequirements: requirements.accepts[0] }),
+      cache: 'no-store',
+    })
+    const settleBody = await readJson(settleRes)
+    if (!settleRes.ok || settleBody?.success === false) {
+      return NextResponse.json({ error: 'Payment settlement failed', detail: settleBody }, { status: 402 })
+    }
+
+    const now = Date.now()
+    const paymentProofHash = createHash('sha256').update(paymentHeader).digest('hex')
+    const sessionId = randomUUID()
+    const sessionToken = signSession({
+      sid: sessionId,
+      iat: now,
+      exp: now + 30 * 60 * 1000,
+      resource: RESOURCE_URL,
+      paymentProofHash,
     })
 
-    const sessionToken = Buffer.from(
-      JSON.stringify({ ts: Date.now(), exp: Date.now() + 30 * 60 * 1000, wallet: PAYMENT_WALLET })
-    ).toString('base64')
-
-    return NextResponse.json(
-      {
-        session: sessionToken,
-        expiresIn: 1800,
-        message: 'Session granted. Good luck in the duel.'
+    return NextResponse.json({
+      session: sessionToken,
+      sessionId,
+      expiresIn: 1800,
+      paymentVerified: true,
+      settlement: settleBody,
+    }, {
+      status: 200,
+      headers: {
+        'X-SESSION-TOKEN': sessionToken,
+        'X-PAYMENT-VERIFIED': 'true',
+        'Cache-Control': 'no-store',
       },
-      {
-        status: 200,
-        headers: {
-          'PAYMENT-RESPONSE': JSON.stringify({ success: true }),
-          'X-SESSION-TOKEN': sessionToken
-        }
-      }
-    )
-  } catch (err) {
-    console.error('[x402 session]', err)
-    return NextResponse.json({ error: 'Internal error during payment verification' }, { status: 500 })
+    })
+  } catch (error: any) {
+    console.error('[agent-duel x402 session]', error)
+    return NextResponse.json({ error: 'Payment/session service unavailable', detail: error?.message }, { status: 502 })
   }
 }
 
@@ -110,7 +132,7 @@ export async function OPTIONS() {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, PAYMENT-SIGNATURE, X-PAYMENT'
-    }
+      'Access-Control-Allow-Headers': 'Content-Type, PAYMENT-SIGNATURE, X-PAYMENT',
+    },
   })
 }
