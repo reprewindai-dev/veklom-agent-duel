@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     ? `✅ ${agentPicked} won the route. Route confirmed.`
     : `❌ ${agentPicked} was hijacked. Route collapsed.`
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://duel.veklom.com'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://veklom-agent-duel.vercel.app'
 
   // Respond with a new Farcaster frame
   const html = `
