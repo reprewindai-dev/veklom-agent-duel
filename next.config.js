@@ -7,7 +7,6 @@ const nextConfig = {
         // Allow Base app to embed this as a Mini App
         source: '/(.*)',
         headers: [
-          { key: 'X-Frame-Options', value: 'ALLOWALL' },
           {
             key: 'Content-Security-Policy',
             value: "frame-ancestors 'self' https://*.base.org https://*.farcaster.xyz https://warpcast.com"
